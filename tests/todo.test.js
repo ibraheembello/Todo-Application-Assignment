@@ -10,21 +10,19 @@ describe('Todo Endpoints', () => {
 
   // Setup test database connection
   beforeAll(async () => {
-    const url = process.env.MONGODB_URI || 'mongodb://localhost:27017/todoapp-test';
+    const url = process.env.MONGODB_URI || 'mongodb+srv://todoapp-user:U09ZDNSr1JEelzya@cluster3.6behnbi.mongodb.net/?retryWrites=true&w=majority&appName=Cluster3';
     await mongoose.connect(url);
   });
 
   // Setup test user and login session before each test
   beforeEach(async () => {
     // Clean up database
-    await Promise.all([
-      User.deleteMany({}),
-      Task.deleteMany({})
-    ]);
+    await User.deleteMany({});
+    await Task.deleteMany({});
 
-    // Create test user with unique username
+    // Create test user
     testUser = new User({
-      username: `test_${Math.floor(Math.random() * 9999)}`,
+      username: 'testuser',
       password: 'password123'
     });
     await testUser.save();
@@ -34,7 +32,7 @@ describe('Todo Endpoints', () => {
     await userSession
       .post('/auth/login')
       .send({
-        username: testUser.username,
+        username: 'testuser',
         password: 'password123'
       });
   });
