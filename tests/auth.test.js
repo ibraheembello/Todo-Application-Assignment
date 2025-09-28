@@ -10,17 +10,14 @@ describe('Authentication Endpoints', () => {
     await mongoose.connect(url);
   });
 
-  // Clean up database before and after each test
   beforeEach(async () => {
     await User.deleteMany({});
   });
 
-  // Clean up database after each test
   afterEach(async () => {
     await User.deleteMany({});
   });
 
-  // Close database connection after all tests
   afterAll(async () => {
     await mongoose.connection.close();
   });
@@ -36,17 +33,23 @@ describe('Authentication Endpoints', () => {
       const response = await request(app)
         .post('/auth/signup')
         .send(userData)
-        .expect(302); // Redirect after successful signup
+        .expect(302)
+        .expect('Location', '/auth/login'); // Verify redirect to login page
 
-      // Check if user was created in database
+      // Add delay before DB check
+      await new Promise(resolve => setTimeout(resolve, 100));
+
       const user = await User.findOne({ username: 'testuser' });
       expect(user).toBeTruthy();
       expect(user.username).toBe('testuser');
+      // Verify password was hashed
+      expect(user.password).not.toBe('password123');
+      expect(await user.comparePassword('password123')).toBeTruthy();
     });
 
     test('Should not register user with invalid username', async () => {
       const userData = {
-        username: 'te', // Too short
+        username: 'te',
         password: 'password123',
         confirmPassword: 'password123'
       };
@@ -54,9 +57,11 @@ describe('Authentication Endpoints', () => {
       const response = await request(app)
         .post('/auth/signup')
         .send(userData)
-        .expect(302); // Redirect with error
+        .expect(302);
 
-      // Check if user was not created
+      // Verify flash message
+      expect(response.headers['location']).toBe('/auth/signup');
+      
       const user = await User.findOne({ username: 'te' });
       expect(user).toBeFalsy();
     });
@@ -124,15 +129,16 @@ describe('Authentication Endpoints', () => {
   });
 
   describe('POST /auth/login', () => {
+    let testUser;
+
     beforeEach(async () => {
-      await User.deleteMany({}); // Clean up before creating new user
-      // Create a test user before each login test
-      const user = new User({
+      await User.deleteMany({});
+      // Create test user properly using the schema methods
+      testUser = new User({
         username: 'testuser',
         password: 'password123'
       });
-      await user.hashPassword();
-      await user.save();
+      await testUser.save(); // This will automatically hash the password
     });
 
     test('Should login with valid credentials', async () => {
@@ -144,10 +150,13 @@ describe('Authentication Endpoints', () => {
       const response = await request(app)
         .post('/auth/login')
         .send(loginData)
-        .expect(302) // Redirect after successful login
-        .expect('Location', '/todos'); // Should redirect to todos page
+        .expect(302)
+        .expect('Location', '/todos');
 
-      expect(response.headers['set-cookie']).toBeDefined(); // Session cookie should be set
+      // Verify session cookie
+      const cookie = response.headers['set-cookie'];
+      expect(cookie).toBeDefined();
+      expect(cookie[0]).toMatch(/connect.sid/);
     });
 
     test('Should not login with invalid username', async () => {
@@ -184,6 +193,31 @@ describe('Authentication Endpoints', () => {
         .post('/auth/login')
         .send(loginData)
         .expect(302);
+    });
+  });
+
+  // Add new test for logout functionality
+  describe('POST /auth/logout', () => {
+    test('Should logout successfully', async () => {
+      const agent = request.agent(app);
+      
+      // Login first
+      await agent
+        .post('/auth/login')
+        .send({
+          username: 'testuser',
+          password: 'password123'
+        });
+
+      // Then test logout
+      const response = await agent
+        .post('/auth/logout')
+        .expect(302)
+        .expect('Location', '/');
+
+      // Verify session was destroyed
+      expect(response.headers['set-cookie'][0])
+        .toMatch(/connect.sid=;/);
     });
   });
 
